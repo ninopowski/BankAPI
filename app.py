@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_restful import Api, Resource
 from pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
+from aux_functions import user_exist, verify_pw, verify_credentials, ret_map, check_amount
 
 
 # initialize flask
@@ -15,33 +16,6 @@ client = MongoClient("mongodb://localhost:27017/bank")
 db = client.BankAPI
 users = db["Users"]
 
-
-def user_exist(username):
-    if users.find_one({"username": username}):
-        return True
-    else:
-        return False
-
-
-def verify_pw(username, password):
-    user = users.find_one({"username": username})
-    if check_password_hash(user["password"], password):
-        return True
-    else:
-        return False
-
-def check_amount(amount):
-    if amount <= 0:
-        return False
-    else:
-        return True
-
-
-
-
-
-def ret_map(code, msg):
-    return {"Status code": code, "msg": msg}
 
 
 class Register(Resource):
@@ -79,14 +53,14 @@ class Transfer(Resource):
         transfer_to_user = posted_data["transfer to"]
         amount = posted_data["amount"]
 
+        return_map, error = verify_credentials(username, password)
+
+        if error:
+            return jsonify(return_map)
+
         if not check_amount(amount):
             return jsonify(ret_map(304, "Amount value invalid."))
 
-        if not user_exist(username):
-            return jsonify(ret_map(301, "Login failed, user doesn't exist."))
-
-        if not verify_pw(username, password):
-            return jsonify(ret_map(302, "Wrong password."))
 
         user = users.find_one({"username": transfer_to_user})
         if not user:
@@ -108,11 +82,9 @@ class Add(Resource):
         if not check_amount(amount):
             return jsonify(ret_map(304, "Amount value invalid."))
 
-        if not user_exist(username):
-            return jsonify(ret_map(301, "Login failed, user doesn't exist."))
-
-        if not verify_pw(username, password):
-            return jsonify(ret_map(302, "Wrong password."))
+        return_map, error = verify_credentials(username, password)
+        if error:
+            return jsonify(return_map)
 
         saldo = users.find_one({"username": username})["own"]
         users.update_one({"username": username}, {"$set": {"own": saldo+amount }})
@@ -126,11 +98,9 @@ class Balance(Resource):
         username = posted_data["username"]
         password = posted_data["password"]
 
-        if not user_exist(username):
-            return jsonify(ret_map(301, "Login failed, user doesn't exist."))
-
-        if not verify_pw(username, password):
-            return jsonify(ret_map(302, "Wrong password."))
+        return_map, error = verify_credentials(username, password)
+        if error:
+            return jsonify(return_map)
 
         user = users.find_one({"username": username})
         return jsonify(
